@@ -78,6 +78,11 @@ input { font: inherit; font-family: var(--mono); color: var(--fg); background: v
 
 details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; }
 summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.combo { position: relative; flex: 2 1 240px !important; }
+.suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin-top: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); max-height: 280px; overflow-y: auto; }
+.suggest div[role="option"] { padding: 8px 10px; cursor: pointer; color: var(--fg); font-size: 14px; font-family: var(--sans); }
+.suggest div[role="option"] small { display: block; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.suggest div[aria-selected="true"], .suggest div[role="option"]:hover { background: var(--bg); }
 .add { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 12px; }
 .msg { font-size: 13px; color: var(--loss); min-height: 1.2em; }
 footer { font-size: 13px; color: var(--muted); max-width: 65ch; }
@@ -247,13 +252,17 @@ td.note { min-width: 220px; color: var(--muted); }
   <details id="addBox">
     <summary>Add a position</summary>
     <form class="add" id="addForm">
+      <label class="combo">ETF name<input id="add-name" required maxlength="80" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="add-suggest" placeholder="Start typing, e.g. iShares Core…" style="font-family: var(--sans)">
+        <div class="suggest" id="add-suggest" role="listbox" hidden></div>
+      </label>
       <label>ISIN<input id="add-isin" required maxlength="12" placeholder="IE00…" autocomplete="off"></label>
-      <label>Name<input id="add-name" required maxlength="80" autocomplete="off" style="font-family: var(--sans)"></label>
       <label>Shares (Stück)<input id="add-qty" required inputmode="decimal" placeholder="10,5"></label>
-      <label>Total cost in €<input id="add-cost" required inputmode="decimal" placeholder="1.200,00"></label>
+      <label>Total cost in € (optional)<input id="add-cost" inputmode="decimal" placeholder="empty = today's price"></label>
       <button class="primary" type="submit">Add position</button>
     </form>
+    <div class="fine num" id="addHint"></div>
     <div class="msg" id="addMsg"></div>
+    <p class="fine">Leave the cost empty and it is set to shares × today's price, so gain and loss start at zero from today. Enter what you actually paid to see your real gain.</p>
   </details>
 
   <details id="importBox">
@@ -602,7 +611,7 @@ td.note { min-width: 220px; color: var(--muted); }
   }
   function prefillAdd(isin, name) {
     location.hash = '#depot'; showView('depot');
-    $('addBox').open = true; $('add-isin').value = isin; $('add-name').value = name; $('add-qty').focus();
+    $('addBox').open = true; $('add-isin').value = isin; $('add-name').value = name; updateHint(); $('add-qty').focus();
   }
   function showView(name) {
     var browse = name === 'browse';
@@ -665,16 +674,92 @@ td.note { min-width: 220px; color: var(--muted); }
     positions = positions.filter(function (p) { return p.isin !== isin; }); save(); render(); refresh();
   }
 
+  // --- Add form: name autocomplete from the Browse list, and cost from today's price ---
+  var sugIdx = -1, sugList = [], priceCache = {}, hintTimer = null;
+  function closeSuggest() { $('add-suggest').hidden = true; $('add-name').setAttribute('aria-expanded', 'false'); sugIdx = -1; }
+  function pickSuggest(e) {
+    $('add-name').value = e[1]; $('add-isin').value = e[0];
+    closeSuggest(); updateHint(); $('add-qty').focus();
+  }
+  function renderSuggest() {
+    var box = $('add-suggest'), q = $('add-name').value.trim().toLowerCase();
+    sugList = !q ? [] : CATALOG.filter(function (e) {
+      return (e[0] + ' ' + e[1] + ' ' + e[2]).toLowerCase().indexOf(q) >= 0 && !positions.some(function (p) { return p.isin === e[0]; });
+    }).slice(0, 8);
+    if (!sugList.length) { closeSuggest(); return; }
+    if (sugIdx >= sugList.length) sugIdx = sugList.length - 1;
+    box.replaceChildren.apply(box, sugList.map(function (e, i) {
+      return h('div', { role: 'option', 'aria-selected': String(i === sugIdx), on: { mousedown: function (ev) { ev.preventDefault(); pickSuggest(e); } } },
+        [e[1], h('small', { text: e[0] + ' · ' + e[2] })]);
+    }));
+    box.hidden = false; $('add-name').setAttribute('aria-expanded', 'true');
+  }
+  $('add-name').addEventListener('input', function () { sugIdx = -1; renderSuggest(); });
+  $('add-name').addEventListener('focus', renderSuggest);
+  $('add-name').addEventListener('blur', closeSuggest);
+  $('add-name').addEventListener('keydown', function (ev) {
+    if ($('add-suggest').hidden) return;
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); sugIdx = (sugIdx + 1) % sugList.length; renderSuggest(); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); sugIdx = (sugIdx <= 0 ? sugList.length : sugIdx) - 1; renderSuggest(); }
+    else if (ev.key === 'Enter' && (sugIdx >= 0 || sugList.length === 1)) { ev.preventDefault(); pickSuggest(sugList[Math.max(0, sugIdx)]); }
+    else if (ev.key === 'Escape') closeSuggest();
+  });
+  // Typing a known ISIN fills in the name.
+  $('add-isin').addEventListener('input', function () {
+    var isin = $('add-isin').value.trim().toUpperCase();
+    var hit = CATALOG.filter(function (e) { return e[0] === isin; })[0];
+    if (hit && !$('add-name').value.trim()) $('add-name').value = hit[1];
+    updateHint();
+  });
+  $('add-qty').addEventListener('input', function () { updateHint(); });
+  $('add-cost').addEventListener('input', function () { updateHint(); });
+
+  function priceFor(isin) {
+    if (quotes[isin] && typeof quotes[isin].price === 'number') return Promise.resolve(quotes[isin].price);
+    var c = priceCache[isin];
+    if (c && Date.now() - c.t < 60000) return Promise.resolve(c.price);
+    return fetch('/api/quotes?days=5&isins=' + isin)
+      .then(function (r) { if (!r.ok) throw new Error('quotes'); return r.json(); })
+      .then(function (d) {
+        var price = d && d[isin] && typeof d[isin].price === 'number' ? d[isin].price : null;
+        priceCache[isin] = { t: Date.now(), price: price };
+        return price;
+      });
+  }
+  function updateHint() {
+    var hint = $('addHint'); clearTimeout(hintTimer);
+    var isin = $('add-isin').value.trim().toUpperCase(), qtyRaw = $('add-qty').value.trim();
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) { hint.textContent = ''; return; }
+    hintTimer = setTimeout(function () {
+      priceFor(isin).then(function (price) {
+        if ($('add-isin').value.trim().toUpperCase() !== isin) return;
+        if (price == null) { hint.textContent = 'No price found for this ISIN. Enter the total cost yourself.'; return; }
+        var qty = qtyRaw ? parseNum(qtyRaw) : null, own = $('add-cost').value.trim();
+        hint.textContent = 'Today\'s price ' + eur.format(price) +
+          (qty ? ' · ' + qtyFull.format(qty) + ' shares = ' + eur.format(qty * price) + (own ? '' : ', used as cost') : '');
+      }).catch(function () { hint.textContent = ''; });
+    }, 250);
+  }
+
   $('addForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var msg = $('addMsg'); msg.textContent = '';
     var isin = $('add-isin').value.trim().toUpperCase(), name = $('add-name').value.trim();
-    var qty = parseNum($('add-qty').value), cost = parseNum($('add-cost').value);
-    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) { msg.textContent = 'An ISIN has 12 characters, for example IE00BK5BQT80.'; return; }
-    if (!name || qty == null || cost == null) { msg.textContent = 'Enter a name, a share count and the total cost.'; return; }
+    var qtyRaw = $('add-qty').value.trim(), costRaw = $('add-cost').value.trim();
+    var qty = qtyRaw ? parseNum(qtyRaw) : null, cost = costRaw ? parseNum(costRaw) : null;
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) { msg.textContent = 'Pick a fund from the suggestions, or enter its 12-character ISIN, for example IE00BK5BQT80.'; return; }
+    if (!name || !qty) { msg.textContent = 'Enter a name and how many shares you hold.'; return; }
+    if (costRaw && cost == null) { msg.textContent = 'Enter the cost as a number like 1.200,00, or leave it empty.'; return; }
     if (positions.some(function (p) { return p.isin === isin; })) { msg.textContent = 'That ISIN is already in the list. Edit its row to change it.'; return; }
-    positions.push({ isin: isin, name: name, wkn: '', qty: qty, cost: cost });
-    save(); e.target.reset(); $('addBox').open = false; render(); refresh();
+    function finish(total) {
+      positions.push({ isin: isin, name: name, wkn: '', qty: qty, cost: Math.round(total * 100) / 100 });
+      save(); e.target.reset(); $('addHint').textContent = ''; $('addBox').open = false; render(); refresh();
+    }
+    if (cost != null) { finish(cost); return; }
+    priceFor(isin).then(function (price) {
+      if (price == null) { msg.textContent = 'No price found for this ISIN, so the cost cannot be worked out. Enter the total cost yourself.'; return; }
+      finish(qty * price);
+    }).catch(function () { msg.textContent = 'Could not load the price. Try again, or enter the total cost yourself.'; });
   });
 
   var KEY = 'etf-depot-positions', lastOk = 0, failed = false, busy = false;
