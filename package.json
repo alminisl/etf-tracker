@@ -1,0 +1,1 @@
+{ "name": "etf-depot", "private": true, "type": "module", "devDependencies": { "@netlify/functions": "latest" } }

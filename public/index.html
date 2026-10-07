@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ETF Depot</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+/* Layout: one column, summary figures first, then an allocation strip, then one row per position that restacks into label/value pairs on a phone. */
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --line: #dde2e8; --fg: #16202b; --muted: #5d6b7a;
+  --accent: #1f5fae; --gain: #0f7b4f; --loss: #c0392f; --warn: #9a6200;
+  --c1: #1f5fae; --c2: #d08a1d; --c3: #7a4fb5; --c4: #2f8f86; --c5: #b8496b; --c6: #6b7785;
+  --sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1419; --surface: #182029; --line: #2a3541; --fg: #e8edf2; --muted: #93a1b0;
+  --accent: #6aa8f0; --gain: #3fc48a; --loss: #f0766a; --warn: #e0a84a;
+  --c1: #6aa8f0; --c2: #e3a94a; --c3: #a98be0; --c4: #5cc2b8; --c5: #e07f9d; --c6: #93a1b0;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1419; --surface: #182029; --line: #2a3541; --fg: #e8edf2; --muted: #93a1b0;
+  --accent: #6aa8f0; --gain: #3fc48a; --loss: #f0766a; --warn: #e0a84a;
+  --c1: #6aa8f0; --c2: #e3a94a; --c3: #a98be0; --c4: #5cc2b8; --c5: #e07f9d; --c6: #93a1b0;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.45; padding-inline: 16px; padding-block: 28px 48px; }
+.wrap { max-width: 980px; margin-inline: auto; display: flex; flex-direction: column; gap: 22px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.gain { color: var(--gain); } .loss { color: var(--loss); } .muted { color: var(--muted); }
+
+header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.status { font-size: 13px; color: var(--muted); }
+.status.stale { color: var(--warn); }
+
+.summary { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+.summary .label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.summary .big { font-size: 34px; font-weight: 500; line-height: 1.15; }
+.summary .mid { font-size: 22px; font-weight: 500; line-height: 1.3; }
+.summary .sub { font-size: 13px; }
+
+.alloc { display: flex; flex-direction: column; gap: 10px; }
+.bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); gap: 2px; }
+.bar span { display: block; min-width: 3px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+
+.table { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.row { display: grid; grid-template-columns: minmax(0, 2.4fr) 1fr 1fr 0.8fr 1.1fr 1.3fr auto; gap: 12px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row.head { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-block: 10px; }
+.row > div { min-width: 0; text-align: right; }
+.row > div:first-child { text-align: left; }
+.name { font-weight: 600; overflow-wrap: anywhere; }
+.name i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 8px; }
+.isin { font-size: 12px; color: var(--muted); }
+.small { font-size: 12px; }
+.full { cursor: help; border-bottom: 1px dotted var(--muted); }
+.empty { padding: 28px 18px; color: var(--muted); }
+
+button { font: inherit; font-weight: 600; font-size: 13px; color: var(--accent); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+button.danger { color: var(--loss); }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input { font: inherit; font-family: var(--mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; min-width: 0; }
+.edit { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: end; text-align: left !important; }
+.edit label, .add label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); flex: 1 1 140px; min-width: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; }
+summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.add { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 12px; }
+.msg { font-size: 13px; color: var(--loss); min-height: 1.2em; }
+footer { font-size: 13px; color: var(--muted); max-width: 65ch; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; }
+.panel h2 { font-size: 17px; font-weight: 700; margin: 0; text-wrap: balance; }
+.panel h3 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.panel p { margin: 0; max-width: 68ch; }
+.nest { display: flex; flex-direction: column; gap: 10px; }
+.nest .lab { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-size: 13px; margin-bottom: 4px; }
+.track { display: flex; height: 22px; gap: 2px; }
+.track span { display: block; border-radius: 3px; }
+.shared { background: var(--c1); } .extra { background: var(--c2); } .none { background: transparent; border: 1px dashed var(--line); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 24px; }
+.facts .v { font-size: 22px; font-weight: 500; }
+.facts .d { font-size: 13px; color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px 8px 0; border-top: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-top: 0; white-space: nowrap; }
+td.r, th.r { text-align: right; white-space: nowrap; }
+td.fund { min-width: 190px; font-weight: 600; }
+td.note { min-width: 220px; color: var(--muted); }
+.tag { font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; margin-left: 6px; white-space: nowrap; }
+.fine { font-size: 13px; color: var(--muted); }
+.view { display: flex; flex-direction: column; gap: 22px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs a { padding: 8px 14px; font-weight: 600; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a[aria-current="page"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; }
+.seg button { border-radius: 0; margin-left: -1px; color: var(--muted); }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); position: relative; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border-radius: 999px; color: var(--muted); }
+.chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.search { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); max-width: 420px; }
+#browse-table td { vertical-align: middle; }
+#browse-table a { color: inherit; text-decoration: none; }
+#browse-table a:hover { text-decoration: underline; }
+.charthead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.chart { min-height: 240px; min-width: 0; }
+.chart svg { display: block; width: 100%; height: 240px; touch-action: pan-y; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { fill: var(--accent); opacity: 0.12; stroke: none; }
+.chart .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart text { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+.chart .hit { fill: transparent; }
+
+@media (max-width: 720px) {
+  .facts { grid-template-columns: 1fr; }
+  .summary { grid-template-columns: 1fr 1fr; }
+  .summary > div:first-child { grid-column: 1 / -1; }
+  .summary .big { font-size: 30px; }
+  .row.head { display: none; }
+  .row { grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .row > div:first-child, .row > div:last-child { grid-column: 1 / -1; }
+  .row > div[data-l] { text-align: left; }
+  .row > div[data-l]::before { content: attr(data-l); display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-family: var(--sans); }
+  .row > div:last-child { text-align: left; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ETF Depot</h1>
+    <div class="status" id="status">Loading positions…</div>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <a href="#depot" id="tab-depot" aria-current="page">Depot</a>
+    <a href="#browse" id="tab-browse">Browse ETFs</a>
+  </nav>
+
+  <div class="view" id="view-depot">
+
+  <section class="summary" aria-label="Portfolio summary">
+    <div><div class="label">Depot value</div><div class="big num" id="total">–</div><div class="sub muted num" id="invested"></div></div>
+    <div><div class="label">Total gain / loss</div><div class="mid num" id="pl">–</div><div class="sub num" id="plPct"></div></div>
+    <div><div class="label">Since previous close</div><div class="mid num" id="day">–</div><div class="sub num" id="dayPct"></div></div>
+  </section>
+
+  <section class="panel" aria-label="Depot value over time">
+    <div class="charthead">
+      <h2 id="chartTitle">Depot value, last 3 months</h2>
+      <div class="seg" role="group" aria-label="Chart mode">
+        <button type="button" id="mode-live" aria-pressed="false">Live tracking</button>
+        <button type="button" id="mode-daily" aria-pressed="true">Daily tracking</button>
+      </div>
+    </div>
+    <div class="num" id="chartRead"></div>
+    <div id="chart" class="chart"><div class="muted">The chart appears once price history is loaded.</div></div>
+    <p class="fine" id="chartNote">Each day is valued with the shares you hold today, so the line shows price movement only, not your deposits. Daily closes; the last point is the latest quote and moves during trading hours.</p>
+  </section>
+
+  <section class="alloc" aria-label="Allocation">
+    <div class="bar" id="bar"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="table" id="table" aria-label="Positions">
+    <div class="empty">Your positions will appear here.</div>
+  </section>
+
+  <section class="panel" id="overlap" hidden aria-label="Overlap between MSCI World and FTSE All-World">
+    <h2>Your World ETF sits almost entirely inside your All-World ETF</h2>
+    <p>MSCI World holds large and mid caps from 23 developed markets. FTSE All-World holds the same developed markets and adds emerging markets on top. Buying both does not add new companies. It only raises the developed-market share above what All-World holds on its own.</p>
+
+    <div class="nest">
+      <div>
+        <div class="lab"><span><strong>FTSE All-World</strong> · 3.759 stocks</span><span class="muted">about 85 % shared · about 15 % only here</span></div>
+        <div class="track"><span class="shared" style="width:85%"></span><span class="extra" style="width:15%"></span></div>
+      </div>
+      <div>
+        <div class="lab"><span><strong>MSCI World</strong> · 1.252 stocks</span><span class="muted">practically all shared</span></div>
+        <div class="track"><span class="shared" style="width:85%"></span><span class="none" style="width:15%"></span></div>
+      </div>
+    </div>
+
+    <div class="facts">
+      <div><div class="v num">≈ 85 %</div><div class="d">Overlap by weight. The 15 % that only All-World holds is mostly Taiwan, China, India and South Korea.</div></div>
+      <div><div class="v num" id="ov-mix">–</div><div class="d">Share of your two global ETFs that sits outside MSCI World, against about 15 % in All-World alone.</div></div>
+      <div><div class="v num" id="ov-dup">–</div><div class="d">Of your combined <span id="ov-sum"></span>, held in companies that both funds own.</div></div>
+    </div>
+
+    <div>
+      <h3>Largest holdings, weight in each fund</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Company</th><th class="r">MSCI World</th><th class="r">FTSE All-World</th></tr></thead>
+        <tbody>
+          <tr><td>NVIDIA</td><td class="r num">5,53 %</td><td class="r num">4,77 %</td></tr>
+          <tr><td>Apple</td><td class="r num">5,07 %</td><td class="r num">4,24 %</td></tr>
+          <tr><td>Microsoft</td><td class="r num">3,90 %</td><td class="r num">3,49 %</td></tr>
+          <tr><td>Amazon</td><td class="r num">2,74 %</td><td class="r num">2,33 %</td></tr>
+          <tr><td>Broadcom</td><td class="r num">1,82 %</td><td class="r num">1,59 %</td></tr>
+          <tr><td>TSMC (Taiwan)</td><td class="r num muted">not held</td><td class="r num">1,70 %</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div>
+      <h3>Funds that cover the whole world in one position</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Fund</th><th class="r">TER</th><th class="r">Stocks</th><th>How it differs</th></tr></thead>
+        <tbody>
+          <tr><td class="fund">Vanguard FTSE All-World <span class="tag">you hold</span><div class="isin num">IE00BK5BQT80</div></td><td class="r num">0,14 %</td><td class="r num">3.759</td><td class="note">Developed and emerging markets, large and mid caps.</td></tr>
+          <tr><td class="fund">Amundi Prime All Country World<div class="isin num">IE0003XJA0J9</div></td><td class="r num">0,07 %</td><td class="r num">3.393</td><td class="note">Similar coverage on a Solactive index at half the cost. Smaller and younger fund.</td></tr>
+          <tr><td class="fund">Invesco FTSE All-World<div class="isin num">IE000716YHJ7</div></td><td class="r num">0,15 %</td><td class="r num">2.353</td><td class="note">Same index as the Vanguard fund, held as a sample of it.</td></tr>
+          <tr><td class="fund">SPDR MSCI ACWI IMI<div class="isin num">IE00B3YLTY66</div></td><td class="r num">0,17 %</td><td class="r num">5.981</td><td class="note">Adds small caps, so it is the broadest of the four.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div>
+      <h3>If you would rather keep the World ETF</h3>
+      <p>Pairing it with an emerging-markets fund, such as iShares Core MSCI EM IMI (IE00BKM4GZ66, TER 0,18 %, 2.902 stocks), gives the same coverage as All-World and lets you set the emerging-markets share yourself. It costs you a second savings plan and occasional rebalancing.</p>
+    </div>
+
+    <p class="fine">Two points for an Austrian depot. Selling a position realises its gain and triggers 27,5 % KESt, so pointing new savings at one fund is cheaper than selling the other. Check that any new fund is a Meldefonds registered with OeKB before you buy. Fund data from justETF, 07.10.2026. The overlap is estimated from country and top-holding weights. This is information, not investment advice.</p>
+  </section>
+
+  <details id="addBox">
+    <summary>Add a position</summary>
+    <form class="add" id="addForm">
+      <label>ISIN<input id="add-isin" required maxlength="12" placeholder="IE00…" autocomplete="off"></label>
+      <label>Name<input id="add-name" required maxlength="80" autocomplete="off" style="font-family: var(--sans)"></label>
+      <label>Shares (Stück)<input id="add-qty" required inputmode="decimal" placeholder="10,5"></label>
+      <label>Total cost in €<input id="add-cost" required inputmode="decimal" placeholder="1.200,00"></label>
+      <button class="primary" type="submit">Add position</button>
+    </form>
+    <div class="msg" id="addMsg"></div>
+  </details>
+
+  <details id="importBox">
+    <summary>Import positions from a link or code</summary>
+    <form class="add" id="importForm">
+      <label>Import link or code<input id="import-code" required autocomplete="off" placeholder="https://…/#import=… or the code alone"></label>
+      <button class="primary" type="submit">Import</button>
+    </form>
+    <div class="msg" id="importMsg"></div>
+    <p class="fine">Importing replaces the positions saved in this browser.</p>
+  </details>
+
+  <footer>Prices come from justETF and are checked every 15 seconds while this tab is open. Your positions are saved in this browser only and are never sent to the server; only the ISINs are, to look up prices.</footer>
+  </div>
+
+  <div class="view" id="view-browse" hidden>
+    <section class="panel">
+      <h2>Browse ETFs</h2>
+      <label class="search">Search by name, index or ISIN<input id="browse-q" type="search" autocomplete="off" placeholder="e.g. S&amp;P 500, Vanguard, IE00…" style="font-family: var(--sans)"></label>
+      <div class="chips" id="browse-cats" role="group" aria-label="Category"></div>
+      <div class="scroll"><table id="browse-table">
+        <thead><tr><th>Fund</th><th>Index</th><th class="r">TER</th><th class="r">Stocks</th><th class="r">Fund size</th><th class="r">Price</th><th class="r">Day</th><th></th></tr></thead>
+        <tbody id="browse-body"></tbody>
+      </table></div>
+      <p class="fine">A fixed list of 24 widely held UCITS ETFs, not the whole market. Fund data from justETF, 07.10.2026; prices refresh every minute. This list is information, not a recommendation. Check that a fund is a Meldefonds registered with OeKB before you buy.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var COLORS = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
+  var eur = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR' });
+  var qtyFmt = new Intl.NumberFormat('de-AT', { maximumFractionDigits: 2 });
+  var qtyFull = new Intl.NumberFormat('de-AT', { maximumFractionDigits: 6 });
+  var pctFmt =new Intl.NumberFormat('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' });
+  var eurSigned = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR', signDisplay: 'exceptZero' });
+
+  var history = {};
+  var positions = [], quotes = {}, loaded = false, editing = null, confirming = null, dirty = false;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function h(tag, attrs, kids) {
+    var el = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'class') el.className = attrs[k];
+      else if (k === 'text') el.textContent = attrs[k];
+      else if (k === 'on') for (var ev in attrs.on) el.addEventListener(ev, attrs.on[ev]);
+      else el.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return el;
+  }
+  function sign(n) { return n > 0 ? 'gain' : n < 0 ? 'loss' : 'muted'; }
+  // Accepts "1.234,56", "1234.56" and "10,5".
+  function parseNum(s) {
+    s = String(s).trim().replace(/\s|€/g, '');
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    var n = Number(s);
+    return isFinite(n) && n >= 0 ? n : null;
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    var p = String(d).slice(0, 10).split('-');
+    return p.length === 3 ? p[2] + '.' + p[1] + '.' : String(d);
+  }
+
+  function compute() {
+    var rows = positions.map(function (p, i) {
+      var q = quotes[p.isin] || null;
+      var has = q && typeof q.price === 'number';
+      var value = has ? p.qty * q.price : null;
+      var hasPrev = has && typeof q.prev === 'number';
+      return { p: p, q: q, color: COLORS[i % COLORS.length], value: value,
+        pl: has ? value - p.cost : null,
+        day: hasPrev ? p.qty * (q.price - q.prev) : null,
+        dayPct: hasPrev && q.prev ? (q.price / q.prev - 1) * 100 : null };
+    });
+    var t = { value: 0, cost: 0, day: 0, prevValue: 0, missing: 0 };
+    rows.forEach(function (r) {
+      if (r.value == null) { t.missing++; return; }
+      t.value += r.value; t.cost += r.p.cost;
+      if (r.day != null) { t.day += r.day; t.prevValue += r.value - r.day; }
+    });
+    return { rows: rows, t: t };
+  }
+
+  function render() {
+    if (editing) { dirty = true; return; }
+    dirty = false;
+    var c = compute(), t = c.t, table = $('table'), bar = $('bar'), legend = $('legend');
+    table.replaceChildren(); bar.replaceChildren(); legend.replaceChildren();
+    renderOverlap(c.rows);
+    renderChart();
+
+    if (!positions.length) {
+      table.appendChild(h('div', { class: 'empty', text: 'No positions yet. Add your first one below with its ISIN, share count and total cost. Positions are saved in this browser only.' }));
+      ['total', 'pl', 'day'].forEach(function (id) { $(id).textContent = '–'; $(id).className = $(id).className.replace(/ (gain|loss|muted)$/, ''); });
+      ['invested', 'plPct', 'dayPct'].forEach(function (id) { $(id).textContent = ''; });
+      return;
+    }
+
+    $('total').textContent = eur.format(t.value);
+    $('invested').textContent = 'Invested ' + eur.format(t.cost) + (t.missing ? ' · ' + t.missing + ' without a price' : '');
+    var pl = t.value - t.cost;
+    $('pl').textContent = eurSigned.format(pl); $('pl').className = 'mid num ' + sign(pl);
+    $('plPct').textContent = t.cost ? pctFmt.format(pl / t.cost * 100) + ' %' : ''; $('plPct').className = 'sub num ' + sign(pl);
+    $('day').textContent = eurSigned.format(t.day); $('day').className = 'mid num ' + sign(t.day);
+    $('dayPct').textContent = t.prevValue ? pctFmt.format(t.day / t.prevValue * 100) + ' %' : ''; $('dayPct').className = 'sub num ' + sign(t.day);
+
+    table.appendChild(h('div', { class: 'row head' }, [
+      h('div', { text: 'Position' }), h('div', { text: 'Shares' }), h('div', { text: 'Price' }), h('div', { text: 'Day' }),
+      h('div', { text: 'Value' }), h('div', { text: 'Gain / loss' }), h('div', { text: '' })
+    ]));
+
+    c.rows.forEach(function (r) {
+      var p = r.p, q = r.q, w = r.value != null && t.value ? r.value / t.value * 100 : 0;
+      if (w > 0) {
+        var seg = h('span', { title: p.name }); seg.style.width = w + '%'; seg.style.background = 'var(' + r.color + ')'; bar.appendChild(seg);
+        var dot = h('i'); dot.style.background = 'var(' + r.color + ')';
+        legend.appendChild(h('span', null, [dot, p.name + ' ' + w.toFixed(1).replace('.', ',') + ' %']));
+      }
+      var dot2 = h('i'); dot2.style.background = 'var(' + r.color + ')';
+      var plPct = r.pl != null && p.cost ? r.pl / p.cost * 100 : null;
+      var last;
+      if (confirming === p.isin) {
+        last = h('div', { class: 'actions' }, [
+          h('button', { class: 'danger', type: 'button', text: 'Remove', on: { click: function () { remove(p.isin); } } }),
+          h('button', { type: 'button', text: 'Keep', on: { click: function () { confirming = null; render(); } } })
+        ]);
+      } else {
+        last = h('div', null, [h('button', { type: 'button', text: 'Edit', 'aria-label': 'Edit ' + p.name, on: { click: function () { startEdit(p); } } })]);
+      }
+      table.appendChild(h('div', { class: 'row', 'data-isin': p.isin }, [
+        h('div', null, [h('div', { class: 'name' }, [dot2, p.name]), h('div', { class: 'isin num', text: p.isin + (p.wkn ? ' · ' + p.wkn : '') })]),
+        h('div', { class: 'num', 'data-l': 'Shares' }, [h('span', { class: 'full', tabindex: '0', title: qtyFull.format(p.qty) + ' Stück', text: qtyFmt.format(p.qty) })]),
+        h('div', { class: 'num', 'data-l': 'Price' }, [
+          h('div', { text: q && typeof q.price === 'number' ? eur.format(q.price) : 'No price yet' }),
+          h('div', { class: 'small muted', text: q && q.date ? fmtDate(q.date) + (q.venue ? ' ' + q.venue : '') : '' })
+        ]),
+        h('div', { class: 'num ' + sign(r.dayPct || 0), 'data-l': 'Day', text: r.dayPct != null ? pctFmt.format(r.dayPct) + ' %' : '–' }),
+        h('div', { class: 'num', 'data-l': 'Value', text: r.value != null ? eur.format(r.value) : '–' }),
+        h('div', { class: 'num ' + sign(r.pl || 0), 'data-l': 'Gain / loss' }, [
+          h('div', { text: r.pl != null ? eurSigned.format(r.pl) : '–' }),
+          h('div', { class: 'small', text: plPct != null ? pctFmt.format(plPct) + ' %' : '' })
+        ]),
+        last
+      ]));
+    });
+    renderStatus();
+  }
+
+  var NS = 'http://www.w3.org/2000/svg';
+  function s(tag, attrs, text) {
+    var el = document.createElementNS(NS, tag);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    if (text != null) el.textContent = text;
+    return el;
+  }
+  var eur0 = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  function longDate(d) { var p = d.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+
+  // Depot value per day: today's share counts times each day's price, for days every charted position has a price.
+  function series() {
+    var held = positions.filter(function (p) { return history[p.isin] && p.qty > 0; });
+    if (!held.length) return [];
+    var days = Object.keys(history[held[0].isin]).sort(), out = [];
+    days.forEach(function (d) {
+      var v = 0, ok = true;
+      held.forEach(function (p) { var x = history[p.isin][d]; if (typeof x !== 'number') ok = false; else v += p.qty * x; });
+      if (ok) out.push({ d: d, v: v });
+    });
+    return out;
+  }
+
+  var mode = 'daily', ticks = [];
+  try { if (localStorage.getItem('etf-depot-mode') === 'live') mode = 'live'; } catch (e) {}
+  var hm = function (ms, sec) { return new Date(ms).toLocaleTimeString('de-AT', sec ? undefined : { hour: '2-digit', minute: '2-digit' }); };
+  // Live samples belong to one day and one set of holdings; anything else starts a fresh line.
+  function sig() { return new Date().toISOString().slice(0, 10) + '|' + positions.map(function (p) { return p.isin + ':' + p.qty; }).join(','); }
+  function loadTicks() {
+    try { var o = JSON.parse(localStorage.getItem('etf-depot-ticks') || 'null'); ticks = o && o.sig === sig() && Array.isArray(o.ticks) ? o.ticks : []; }
+    catch (e) { ticks = []; }
+  }
+  function addTick(v) {
+    loadTicks();
+    var now = Date.now(), last = ticks[ticks.length - 1];
+    if (last && now - last.t < 10000) return;
+    ticks.push({ t: now, v: Math.round(v * 100) / 100 });
+    if (ticks.length > 3000) ticks.shift();
+    try { localStorage.setItem('etf-depot-ticks', JSON.stringify({ sig: sig(), ticks: ticks })); } catch (e) {}
+  }
+
+  function chartData() {
+    if (mode === 'live') {
+      var n = ticks.length, t0 = n ? ticks[0].t : 0, span = n ? (ticks[n - 1].t - t0) || 1 : 1;
+      return {
+        title: 'Depot value, live today',
+        note: 'Live tracking records your depot value every 15 seconds while this page is open, and keeps today\'s line in this browser. It starts fresh each day.',
+        empty: n === 1 ? 'Live tracking started at ' + hm(t0) + '. The line builds up while this page stays open.' : 'Live tracking starts with the next price update.',
+        since: n ? 'since ' + hm(t0) : '',
+        pts: ticks.map(function (k) { return { pos: (k.t - t0) / span, v: k.v, label: hm(k.t, true) }; }),
+        xt: n > 1 ? [0, 1 / 3, 2 / 3].map(function (p) { return { pos: p, text: hm(t0 + span * p, span < 600000) }; }) : []
+      };
+    }
+    var ds = series(), xt = [], lastMonth = '';
+    ds.forEach(function (p, i) {
+      var m = p.d.slice(0, 7);
+      if (m !== lastMonth && i > 0) xt.push({ pos: i / (ds.length - 1), text: new Date(p.d + 'T12:00:00').toLocaleDateString('de-AT', { month: 'short' }) });
+      lastMonth = m;
+    });
+    return {
+      title: 'Depot value, last 3 months',
+      note: 'Each day is valued with the shares you hold today, so the line shows price movement only, not your deposits. Daily closes; the last point is the latest quote and moves during trading hours.',
+      empty: 'The chart appears once price history is loaded.',
+      since: ds.length ? 'since ' + fmtDate(ds[0].d) : '',
+      pts: ds.map(function (p, i) { return { pos: i / ((ds.length - 1) || 1), v: p.v, label: longDate(p.d) }; }),
+      xt: xt
+    };
+  }
+
+  function renderChart() {
+    var box = $('chart'), read = $('chartRead'), c = chartData(), pts = c.pts;
+    $('chartTitle').textContent = c.title; $('chartNote').textContent = c.note;
+    $('mode-live').setAttribute('aria-pressed', String(mode === 'live'));
+    $('mode-daily').setAttribute('aria-pressed', String(mode === 'daily'));
+    if (pts.length < 2) {
+      box.replaceChildren(h('div', { class: 'muted', text: c.empty }));
+      read.textContent = pts.length ? eur.format(pts[0].v) : ''; read.className = 'num'; return;
+    }
+    var W = Math.max(280, box.clientWidth || 800), H = 240, L = 4, R = 62, T = 12, B = 24;
+    var lo = Infinity, hi = -Infinity;
+    pts.forEach(function (p) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; });
+    var pad = (hi - lo) * 0.1 || hi * 0.002 || 1; lo -= pad; hi += pad;
+    if (hi - lo < 40) R = 88;
+    var x = function (pos) { return L + (W - L - R) * pos; };
+    var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
+    var first = pts[0], last = pts[pts.length - 1];
+    var svg = s('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': c.title + ', ' + first.label + ' to ' + last.label });
+    var tickFmt = hi - lo < 40 ? eur : eur0;
+
+    for (var g = 0; g < 4; g++) {
+      var gv = lo + (hi - lo) * (g + 0.5) / 4, gy = y(gv);
+      svg.appendChild(s('line', { class: 'grid', x1: L, x2: W - R, y1: gy, y2: gy }));
+      svg.appendChild(s('text', { x: W - R + 6, y: gy + 4 }, tickFmt.format(gv)));
+    }
+    c.xt.forEach(function (k) { if (x(k.pos) < W - R - 34) svg.appendChild(s('text', { x: x(k.pos), y: H - 6 }, k.text)); });
+
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(p.pos).toFixed(1) + ' ' + y(p.v).toFixed(1); }).join(' ');
+    svg.appendChild(s('path', { class: 'area', d: d + ' L' + x(1).toFixed(1) + ' ' + (H - B) + ' L' + L + ' ' + (H - B) + ' Z' }));
+    svg.appendChild(s('path', { class: 'line', d: d }));
+    var cross = s('line', { class: 'cross', y1: T, y2: H - B, x1: 0, x2: 0, visibility: 'hidden' });
+    var dot = s('circle', { class: 'dot', r: 4.5 });
+    svg.appendChild(cross); svg.appendChild(dot);
+
+    function show(i) {
+      var p = pts[i], rest = i === pts.length - 1;
+      dot.setAttribute('cx', x(p.pos)); dot.setAttribute('cy', y(p.v));
+      cross.setAttribute('x1', x(p.pos)); cross.setAttribute('x2', x(p.pos));
+      cross.setAttribute('visibility', rest ? 'hidden' : 'visible');
+      var diff = p.v - first.v;
+      read.textContent = (rest ? '' : p.label + ' · ') + eur.format(p.v) + ' · ' + eurSigned.format(diff) + ' (' + pctFmt.format(diff / first.v * 100) + ' %) ' + c.since;
+      read.className = 'num ' + sign(diff);
+    }
+    var hit = s('rect', { class: 'hit', x: 0, y: 0, width: W, height: H });
+    function move(e) {
+      var r = svg.getBoundingClientRect(), pos = ((e.clientX - r.left) * W / r.width - L) / (W - L - R), best = 0, bd = Infinity;
+      pts.forEach(function (p, i) { var dd = Math.abs(p.pos - pos); if (dd < bd) { bd = dd; best = i; } });
+      show(best);
+    }
+    hit.addEventListener('pointermove', move); hit.addEventListener('pointerdown', move);
+    hit.addEventListener('pointerleave', function () { show(pts.length - 1); });
+    svg.appendChild(hit);
+    box.replaceChildren(svg);
+    show(pts.length - 1);
+  }
+  ['live', 'daily'].forEach(function (m) {
+    $('mode-' + m).addEventListener('click', function () {
+      mode = m; try { localStorage.setItem('etf-depot-mode', m); } catch (e) {}
+      renderChart();
+    });
+  });
+
+  // 24 widely held UCITS ETFs: isin, name, index, TER %, holdings, fund size in EUR million, payout, category. justETF, 07.10.2026.
+  var CATALOG = [
+    ['IE00BK5BQT80', 'Vanguard FTSE All-World (Acc)', 'FTSE All-World', 0.14, 3759, 54768, 'Acc', 'All-World'],
+    ['IE00B3RBWM25', 'Vanguard FTSE All-World (Dist)', 'FTSE All-World', 0.14, 3759, 24263, 'Dist', 'All-World'],
+    ['IE00B6R52259', 'iShares MSCI ACWI (Acc)', 'MSCI ACWI', 0.20, 2296, 31931, 'Acc', 'All-World'],
+    ['IE00B3YLTY66', 'SPDR MSCI ACWI IMI (Acc)', 'MSCI ACWI IMI', 0.17, 5981, 8064, 'Acc', 'All-World'],
+    ['IE000716YHJ7', 'Invesco FTSE All-World (Acc)', 'FTSE All-World', 0.15, 2353, 4198, 'Acc', 'All-World'],
+    ['IE0003XJA0J9', 'Amundi Prime All Country World (Acc)', 'Solactive GBS Global Markets Large & Mid Cap', 0.07, 3393, 3181, 'Acc', 'All-World'],
+    ['IE00B4L5Y983', 'iShares Core MSCI World (Acc)', 'MSCI World', 0.20, 1252, 132811, 'Acc', 'World'],
+    ['IE00BJ0KDQ92', 'Xtrackers MSCI World 1C', 'MSCI World', 0.12, 1454, 21798, 'Acc', 'World'],
+    ['IE00BFY0GT14', 'SPDR MSCI World (Acc)', 'MSCI World', 0.12, 1266, 18551, 'Acc', 'World'],
+    ['LU1781541179', 'Amundi MSCI World V (Acc)', 'MSCI World', 0.12, 1396, 6575, 'Acc', 'World'],
+    ['IE00BKM4GZ66', 'iShares Core MSCI EM IMI (Acc)', 'MSCI Emerging Markets IMI', 0.18, 2902, 40289, 'Acc', 'Emerging markets'],
+    ['IE00BTJRMP35', 'Xtrackers MSCI Emerging Markets 1C', 'MSCI Emerging Markets', 0.18, 1173, 12653, 'Acc', 'Emerging markets'],
+    ['IE00B3VVMM84', 'Vanguard FTSE Emerging Markets (Dist)', 'FTSE Emerging', 0.17, 2289, 3176, 'Dist', 'Emerging markets'],
+    ['IE00B5BMR087', 'iShares Core S&P 500 (Acc)', 'S&P 500', 0.07, 503, 140449, 'Acc', 'USA'],
+    ['IE00BFMXXD54', 'Vanguard S&P 500 (Acc)', 'S&P 500', 0.07, 503, 32731, 'Acc', 'USA'],
+    ['IE00B53SZB19', 'iShares Nasdaq 100 (Acc)', 'Nasdaq 100', 0.30, 103, 26449, 'Acc', 'USA'],
+    ['LU0908500753', 'Amundi Core Stoxx Europe 600 (Acc)', 'STOXX Europe 600', 0.07, 612, 20971, 'Acc', 'Europe'],
+    ['IE00B4K48X80', 'iShares Core MSCI Europe (Acc)', 'MSCI Europe', 0.12, 388, 15745, 'Acc', 'Europe'],
+    ['IE00BF4RFH31', 'iShares MSCI World Small Cap (Acc)', 'MSCI World Small Cap', 0.35, 3580, 7895, 'Acc', 'Small caps'],
+    ['IE00B8GKDB10', 'Vanguard FTSE All-World High Dividend Yield (Dist)', 'FTSE All-World High Dividend Yield', 0.29, 2348, 9910, 'Dist', 'Dividends'],
+    ['IE00BDBRDM35', 'iShares Core Global Aggregate Bond EUR Hedged (Acc)', 'Bloomberg Global Aggregate Bond (EUR Hedged)', 0.10, 19608, 2529, 'Acc', 'Bonds'],
+    ['IE00BG47KH54', 'Vanguard Global Aggregate Bond EUR Hedged (Acc)', 'Bloomberg Global Aggregate Float Adjusted and Scaled (EUR Hedged)', 0.08, 13364, 2316, 'Acc', 'Bonds'],
+    ['IE00B1FZS350', 'iShares Developed Markets Property Yield (Dist)', 'FTSE EPRA/NAREIT Developed Dividend+', 0.59, 313, 950, 'Dist', 'Real estate'],
+    ['LU0489337690', 'Xtrackers FTSE Developed Europe Real Estate 1C', 'FTSE EPRA/NAREIT Developed Europe', 0.33, null, 590, 'Acc', 'Real estate']
+  ];
+  var bQuotes = {}, bCat = 'All';
+  var int0 = new Intl.NumberFormat('de-DE'), dec1 = new Intl.NumberFormat('de-AT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), dec2 = new Intl.NumberFormat('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function renderBrowse() {
+    var cats = ['All'], chips = $('browse-cats'), body = $('browse-body'), q = $('browse-q').value.trim().toLowerCase();
+    CATALOG.forEach(function (e) { if (cats.indexOf(e[7]) < 0) cats.push(e[7]); });
+    chips.replaceChildren.apply(chips, cats.map(function (c) {
+      return h('button', { type: 'button', 'aria-pressed': String(c === bCat), text: c, on: { click: function () { bCat = c; renderBrowse(); } } });
+    }));
+    var rows = CATALOG.filter(function (e) {
+      return (bCat === 'All' || e[7] === bCat) && (!q || (e[0] + ' ' + e[1] + ' ' + e[2] + ' ' + e[7]).toLowerCase().indexOf(q) >= 0);
+    });
+    if (!rows.length) { body.replaceChildren(h('tr', null, [h('td', { colspan: '8', class: 'muted', text: 'No fund in this list matches. Any other ETF can still be added on the Depot tab with its ISIN.' })])); return; }
+    body.replaceChildren.apply(body, rows.map(function (e) {
+      var quote = bQuotes[e[0]], day = quote && quote.prev ? (quote.price / quote.prev - 1) * 100 : null;
+      var held = positions.some(function (p) { return p.isin === e[0]; });
+      return h('tr', null, [
+        h('td', { class: 'fund' }, [
+          h('a', { href: 'https://www.justetf.com/en/etf-profile.html?isin=' + e[0], target: '_blank', rel: 'noopener', text: e[1] }),
+          h('div', { class: 'isin num', text: e[0] + ' · ' + e[7] + ' · ' + (e[6] === 'Acc' ? 'accumulating' : 'distributing') })
+        ]),
+        h('td', { class: 'note', text: e[2] }),
+        h('td', { class: 'r num', text: dec2.format(e[3]) + ' %' }),
+        h('td', { class: 'r num', text: e[4] == null ? '–' : int0.format(e[4]) }),
+        h('td', { class: 'r num', text: e[5] >= 1000 ? dec1.format(e[5] / 1000) + ' bn €' : int0.format(e[5]) + ' m €' }),
+        h('td', { class: 'r num', text: quote ? eur.format(quote.price) : '–' }),
+        h('td', { class: 'r num ' + sign(day || 0), text: day != null ? pctFmt.format(day) + ' %' : '–' }),
+        h('td', { class: 'r' }, [held ? h('span', { class: 'tag', text: 'in depot' }) : h('button', { type: 'button', text: 'Add', 'aria-label': 'Add ' + e[1] + ' to depot', on: { click: function () { prefillAdd(e[0], e[1]); } } })])
+      ]);
+    }));
+  }
+  function loadBrowse() {
+    fetch('/api/quotes?days=7&isins=' + CATALOG.map(function (e) { return e[0]; }).join(','))
+      .then(function (r) { if (!r.ok) throw new Error('quotes'); return r.json(); })
+      .then(function (d) { bQuotes = d || {}; renderBrowse(); })
+      .catch(function () {});
+  }
+  function prefillAdd(isin, name) {
+    location.hash = '#depot'; showView('depot');
+    $('addBox').open = true; $('add-isin').value = isin; $('add-name').value = name; $('add-qty').focus();
+  }
+  function showView(name) {
+    var browse = name === 'browse';
+    $('view-depot').hidden = browse; $('view-browse').hidden = !browse;
+    if (browse) { $('tab-browse').setAttribute('aria-current', 'page'); $('tab-depot').removeAttribute('aria-current'); renderBrowse(); loadBrowse(); }
+    else { $('tab-depot').setAttribute('aria-current', 'page'); $('tab-browse').removeAttribute('aria-current'); renderChart(); }
+  }
+  $('browse-q').addEventListener('input', renderBrowse);
+
+  // Shown only while both the FTSE All-World and the MSCI World fund are in the depot.
+  var ALL_WORLD = 'IE00BK5BQT80', WORLD = 'IE00B4L5Y983', ONLY_ALL_WORLD = 0.15;
+  function renderOverlap(rows) {
+    var a = null, w = null;
+    rows.forEach(function (r) { if (r.p.isin === ALL_WORLD) a = r; if (r.p.isin === WORLD) w = r; });
+    var ok = a && w && a.value != null && w.value != null && a.value + w.value > 0;
+    $('overlap').hidden = !ok;
+    if (!ok) return;
+    var sum = a.value + w.value, outside = a.value * ONLY_ALL_WORLD;
+    $('ov-mix').textContent = '≈ ' + (outside / sum * 100).toFixed(1).replace('.', ',') + ' %';
+    $('ov-dup').textContent = '≈ ' + eur.format(sum - outside);
+    $('ov-sum').textContent = eur.format(sum);
+  }
+
+  function renderStatus() {
+    var el = $('status');
+    if (!positions.length) { el.textContent = importNote; return; }
+    el.className = 'status' + (failed ? ' stale' : '');
+    if (!lastOk) { el.textContent = importNote + (failed ? 'Could not load prices. Retrying.' : 'Loading prices…'); return; }
+    el.textContent = importNote + (failed ? 'Price source not responding. Last update ' : 'Prices updated ') + new Date(lastOk).toLocaleTimeString('de-AT');
+  }
+
+  function startEdit(p) {
+    confirming = null; render();
+    editing = p.isin;
+    var row = document.querySelector('.row[data-isin="' + p.isin + '"]');
+    if (!row) { editing = null; return; }
+    var qty = h('input', { id: 'edit-qty', inputmode: 'decimal', value: String(p.qty).replace('.', ',') });
+    var cost = h('input', { id: 'edit-cost', inputmode: 'decimal', value: p.cost.toFixed(2).replace('.', ',') });
+    var msg = h('div', { class: 'msg' });
+    var form = h('form', { class: 'edit', on: { submit: function (e) {
+      e.preventDefault();
+      var nq = parseNum(qty.value), nc = parseNum(cost.value);
+      if (nq == null || nc == null) { msg.textContent = 'Enter numbers like 10,5 and 1.200,00.'; return; }
+      p.qty = nq; p.cost = nc; save(); stopEdit();
+    } } }, [
+      h('label', null, ['Shares (Stück)', qty]), h('label', null, ['Total cost in €', cost]),
+      h('div', { class: 'actions' }, [
+        h('button', { class: 'primary', type: 'submit', text: 'Save' }),
+        h('button', { type: 'button', text: 'Cancel', on: { click: stopEdit } }),
+        h('button', { class: 'danger', type: 'button', text: 'Remove…', on: { click: function () { confirming = p.isin; stopEdit(); } } })
+      ]), msg
+    ]);
+    row.replaceChildren(h('div', { class: 'name', text: p.name }), form);
+    row.firstChild.style.gridColumn = '1 / -1';
+    qty.focus();
+  }
+  function stopEdit() { editing = null; render(); }
+  function remove(isin) {
+    confirming = null;
+    positions = positions.filter(function (p) { return p.isin !== isin; }); save(); render(); refresh();
+  }
+
+  $('addForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = $('addMsg'); msg.textContent = '';
+    var isin = $('add-isin').value.trim().toUpperCase(), name = $('add-name').value.trim();
+    var qty = parseNum($('add-qty').value), cost = parseNum($('add-cost').value);
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) { msg.textContent = 'An ISIN has 12 characters, for example IE00BK5BQT80.'; return; }
+    if (!name || qty == null || cost == null) { msg.textContent = 'Enter a name, a share count and the total cost.'; return; }
+    if (positions.some(function (p) { return p.isin === isin; })) { msg.textContent = 'That ISIN is already in the list. Edit its row to change it.'; return; }
+    positions.push({ isin: isin, name: name, wkn: '', qty: qty, cost: cost });
+    save(); e.target.reset(); $('addBox').open = false; render(); refresh();
+  });
+
+  var KEY = 'etf-depot-positions', lastOk = 0, failed = false, busy = false;
+  var ISIN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
+  function valid(x) { return x && ISIN.test(String(x.isin).toUpperCase()); }
+  function clean(x) {
+    return { isin: String(x.isin).toUpperCase(), name: String(x.name || x.isin).slice(0, 80), wkn: x.wkn ? String(x.wkn).slice(0, 12) : '', qty: Number(x.qty) || 0, cost: Number(x.cost) || 0 };
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(positions)); } catch (e) {} }
+  function load() {
+    try { var a = JSON.parse(localStorage.getItem(KEY) || '[]'); if (Array.isArray(a)) positions = a.filter(valid).map(clean); } catch (e) {}
+  }
+  // Accepts a full link ending in #import=<code> or the bare code. The code never leaves the browser.
+  function importCode(str) {
+    var code = String(str || '').trim(), at = code.indexOf('import=');
+    if (at >= 0) code = code.slice(at + 7);
+    try { code = decodeURIComponent(code); } catch (e) {}
+    code = code.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/]/g, '');
+    while (code.length % 4) code += '=';
+    try {
+      var a = JSON.parse(decodeURIComponent(escape(atob(code))));
+      if (!Array.isArray(a)) return 0;
+      a = a.filter(valid).map(clean);
+      if (!a.length) return 0;
+      positions = a; save(); return a.length;
+    } catch (e) { return 0; }
+  }
+  function importFromHash() {
+    if (location.hash.indexOf('#import=') !== 0) return false;
+    var n = importCode(location.hash);
+    try { window.history.replaceState(null, '', location.pathname); } catch (e) {}
+    importNote = n ? 'Imported ' + n + ' positions. ' : 'That import link could not be read. ';
+    return true;
+  }
+  var importNote = '';
+  function refresh() {
+    if (!positions.length || busy) { renderStatus(); return; }
+    busy = true;
+    fetch('/api/quotes?isins=' + positions.map(function (p) { return p.isin; }).join(','))
+      .then(function (r) { if (!r.ok) throw new Error('quotes'); return r.json(); })
+      .then(function (data) {
+        var q = {}, hst = {};
+        Object.keys(data).forEach(function (k) {
+          var d = data[k];
+          if (!d || typeof d.price !== 'number') return;
+          q[k] = { price: d.price, prev: d.prev, date: d.date, venue: d.venue };
+          if (d.points && typeof d.points === 'object') hst[k] = d.points;
+        });
+        quotes = q; history = hst; lastOk = Date.now(); failed = false;
+        var tot = compute().t; if (!tot.missing && tot.value > 0) addTick(tot.value);
+        render(); if (editing) renderStatus();
+      })
+      .catch(function () { failed = true; renderStatus(); })
+      .then(function () { busy = false; });
+  }
+
+  load(); importFromHash(); loadTicks(); loaded = true; render(); refresh();
+  showView(location.hash === '#browse' ? 'browse' : 'depot');
+  window.addEventListener('hashchange', function () {
+    if (importFromHash()) { loadTicks(); render(); refresh(); }
+    showView(location.hash === '#browse' ? 'browse' : 'depot');
+  });
+  $('importForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = importCode($('import-code').value), msg = $('importMsg');
+    if (!n) { msg.textContent = 'That link or code could not be read. Paste the whole link, including everything after #import=.'; return; }
+    msg.textContent = ''; e.target.reset(); $('importBox').open = false;
+    importNote = 'Imported ' + n + ' positions. ';
+    loadTicks(); render(); refresh();
+  });
+  setInterval(function () { if (!document.hidden) refresh(); }, 15000);
+  setInterval(function () { if (!document.hidden && !$('view-browse').hidden) loadBrowse(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+  if (window.ResizeObserver) {
+    var lastW = 0;
+    new ResizeObserver(function () { var w = $('chart').clientWidth; if (w && w !== lastW) { lastW = w; renderChart(); } }).observe($('chart'));
+  }
+})();
+</script>
+</body>
+</html>
